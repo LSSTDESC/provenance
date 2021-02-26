@@ -36,7 +36,7 @@ We can do that by first collecting any config parameters we were passed
 and the paths to all our input files:
 ```
 code_config = { "nbin": 100, "classifier": "flexzboost", "target": 0.2}
-input_files = {"name_of_input_file": "./my_input.hdf5"}
+input_files = {"catalog": "./my_input.hdf5"}
 ```
 
 Now we can generaete a provenance object that includes these
