@@ -49,6 +49,10 @@ This will contain, in addition to the provenance above:
 - The specific configuration we passed in
 - The paths and, if they have one, the unique IDs for each of the input files.
 
+File types
+----------
+
+This library currently works with FITS, YAML, and HDF5 files.
 
 Saving to open files
 --------------------
