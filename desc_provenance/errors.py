@@ -6,6 +6,10 @@ class ProvenanceFileTypeUnknown(ProvenanceError):
     pass
 
 
+class ProvenanceFileSchemeUnsupported(ProvenanceError):
+    pass
+
+
 class ProvenanceMissingFile(ProvenanceError):
     pass
 

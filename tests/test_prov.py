@@ -56,7 +56,9 @@ def test_inputs():
         assert "UNKNOWN" == q["input_id", "tag2"]
 
 
-@pytest.mark.parametrize("file_type, opener", [("hdf", utils.open_hdf)])
+@pytest.mark.parametrize(
+    "file_type, opener", [("hdf", utils.open_hdf), ("yml", utils.open_file)]
+)
 def test_new(file_type, opener):
     p = Provenance()
     p["sec", "aaa"] = "xxx"
@@ -179,6 +181,42 @@ def test_existing_hdf():
         assert q1.provenance == q1.provenance
 
 
+def test_yml():
+    import ruamel.yaml as yaml
+
+    y = yaml.YAML()
+    # check nothing is overridden
+    d = {
+        "cat": "good",
+        "dog": "bad",
+        "spoon": 45.6,
+        "cow": -222,
+    }
+    with tempfile.TemporaryDirectory() as dirname:
+        fname = os.path.join(dirname, "test.yml")
+        y.dump(d, open(fname, "w"))
+
+        p = Provenance()
+        p.generate()
+        file_id = p.write(fname)
+
+        #  check prov reads
+        q = Provenance()
+        q.read(fname)
+
+        assert q["base", "file_id"] == file_id
+        assert q["base", "process_id"] == q["base", "process_id"]
+
+        d2 = y.load(open(fname))
+        d2.pop("provenance")
+        assert d == d2
+
+        q = Provenance()
+        q.read_yaml(open(fname))
+        assert q["base", "file_id"] == file_id
+        assert q["base", "process_id"] == q["base", "process_id"]
+
+
 def test_write_fails():
     p = Provenance()
     p.generate()
@@ -187,4 +225,4 @@ def test_write_fails():
 
 
 if __name__ == "__main__":
-    test_inputs()
+    test_yml()

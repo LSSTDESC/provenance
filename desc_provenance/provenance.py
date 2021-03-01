@@ -529,16 +529,71 @@ class Provenance:
     # Other I/O Methods
     # -----------------
 
-    def read_yaml(self, yml_file):
-        raise NotImplementedError("File type note implemented")
+    @classmethod
+    def _read_get_yaml(cls, yml_file, item):
+        import yaml
+
+        with utils.open_file(yml_file, "r") as f:
+            data = yaml.safe_load(f)
+            d = data["provenance"]
+            if item is not None:
+                sd = d[item[0]]
+                return sd[item[1]]
+            out = {}
+            for section, sub in d.items():
+                for key, value in sub.items():
+                    out[section, key] = value
+            return out
 
     @classmethod
-    def get_yaml(self, yml_file, item):
-        raise NotImplementedError("File type note implemented")
+    def get_yaml(self, yml_file, section, key):
+        return self._read_get_yaml(yml_file, (section, key))
+
+    def read_yaml(self, yml_file):
+        d = self._read_get_yaml(yml_file, None)
+        self.update(d)
+
+    def _make_yml(self):
+        d = {}
+        for (sec, key), val in self.provenance.items():
+            if sec not in d:
+                d[sec] = {}
+            d[sec][key] = val
+        return d
 
     @writer_method
     def write_yaml(self, yml_file):
-        raise NotImplementedError("File type note implemented")
+        import ruamel.yaml as yaml
+
+        y = yaml.YAML()
+        p = self._make_yml()
+
+        if isinstance(yml_file, str) or "r" in yml_file.mode:
+            with utils.open_file(yml_file, "r+") as f:
+                s = f.tell()
+                f.seek(0)
+
+                d = y.load(f)
+
+                if d is None:
+                    # file was empty before
+                    d = {}
+                elif not (isinstance(d, yaml.comments.CommentedMap)):
+                    f.seek(s)
+                    raise errors.ProvenanceFileSchemeUnsupported(
+                        "Provenance only supports yaml files containing a dictionary as the top level object"
+                    )
+
+                #  replace existing prov completely if present.  We re-write
+                # the whole file.  Could avoid but not really needed
+                #  as ruamel should maintain comments.
+                d["provenance"] = p
+                f.seek(0)
+                y.dump(d, f)
+                f.truncate()
+        else:
+            #  filed opened in write-only mpde
+            y.dump(x, f)
 
     @classmethod
     def get_sacc(self, sacc_file):

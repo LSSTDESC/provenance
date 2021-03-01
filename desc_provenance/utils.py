@@ -94,3 +94,21 @@ def open_fits(fits_file, mode):
             f.close()
     else:
         yield fits_file
+
+
+@contextlib.contextmanager
+def open_file(file, mode):
+    """Open a regular file, or if a file is already provided simply return it"""
+
+    if isinstance(file, str):
+        if mode == "r+" and not os.path.exists(file):
+            f = open(file, "w+")
+        else:
+            f = open(file, mode=mode)
+
+        try:
+            yield f
+        finally:
+            f.close()
+    else:
+        yield file
