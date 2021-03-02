@@ -39,6 +39,10 @@ and the paths to all our input files:
 ```
 code_config = { "nbin": 100, "classifier": "flexzboost", "target": 0.2}
 input_files = {"catalog": "./my_input.hdf5"}
+comments = [
+	"Replaces version 14a",
+	"Should fix convergence error"
+]
 ```
 
 Now we can generaete a provenance object that includes these
