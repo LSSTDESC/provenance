@@ -21,6 +21,7 @@ input_id_section = "input_id"
 input_path_section = "input_path"
 git_section = "git"
 versions_section = "versions"
+comments_section = "comments"
 
 
 def writer_method(method):
@@ -67,12 +68,15 @@ class Provenance:
         """Create an empty provenance object"""
         self.code_dir = code_dir or utils.get_caller_directory(parent_frames + 1)
         self.provenance = {}
+        self.comments = []
 
     # Generation methods
     # ------------------
-    def generate(self, user_config=None, input_files=None):
+    def generate(self, user_config=None, input_files=None, comments=None):
         """
-        Generate a new set of provenance, containing:
+        Generate a new set of provenance.
+
+        After calling this the provenance object will contain:
             - the date, time, and place of creation
             - the user and domain name
             - all python modules already imported anywhere that have a version number
@@ -80,6 +84,16 @@ class Provenance:
             - sys.argv
             - a config dict passed by the caller
             - a dict of input files passed by the caller
+            - any comments we want to add.
+
+        Parameters
+        ----------
+        user_config: dict or None
+            Optional input configuration options
+        input_files: dict or None
+            Optional name_for_file: file_path dict
+        comments: list or None
+            Optional comments to include.  Not intended to be machine-readable
         """
         # Record various core pieces of information
         self._add_core_info()
@@ -96,6 +110,10 @@ class Provenance:
         if user_config is not None:
             for key, value in user_config.items():
                 self[config_section, key] = value
+
+        if comments is not None:
+            for comment in comments:
+                self.add_comment(comment)
 
     #  Core methods called in generate above
     # -------------------------------------
@@ -144,6 +162,20 @@ class Provenance:
         except errors.ProvenanceError:
             self[input_id_section, name] = unknown_value
 
+    def add_comment(self, comment):
+        """
+        Add a text comment.
+
+        Comments with line breaks will be split into separate comments.
+
+        Parameters
+        ----------
+        comment: str
+            Comment to include
+        """
+        for c in comment.split("\n"):
+            self.comments.append(c)
+
     # Dictionary methods
     # ------------------
     def __getitem__(self, section_name):
@@ -185,6 +217,11 @@ class Provenance:
         Parameters
         ----------
         filename: str
+
+        Returns
+        -------
+        str
+            The newly-assigned file ID
         """
         p = pathlib.Path(filename)
 
@@ -195,7 +232,6 @@ class Provenance:
             ".fit": self.write_fits,
             ".yml": self.write_yaml,
             ".yaml": self.write_yaml,
-            ".sacc": self.write_sacc,
         }
 
         method = writers.get(p.suffix)
@@ -230,7 +266,6 @@ class Provenance:
             ".fit": self.read_fits,
             ".yml": self.read_yaml,
             ".yaml": self.read_yaml,
-            ".sacc": self.read_sacc,
         }
 
         method = readers.get(p.suffix)
@@ -251,6 +286,15 @@ class Provenance:
         Parameters
         ----------
         filename: str
+
+        section: str
+
+        key: str
+
+        Returns
+        -------
+        value: any
+            The native value of the key in this value
         """
 
         p = pathlib.Path(filename)
@@ -264,7 +308,6 @@ class Provenance:
             ".fit": cls.get_fits,
             ".yml": cls.get_yaml,
             ".yaml": cls.get_yaml,
-            ".sacc": cls.get_sacc,
         }
 
         method = getters.get(p.suffix)
@@ -293,13 +336,18 @@ class Provenance:
             # If we are being called from read_hdf then we want to read everything
             if item is None:
                 d = {}
+                comments = []
                 # Go to all the (category) subgroups
                 for section in g.keys():
                     sg = g[section]
-                    # and read all the attributes in each one
-                    for key, val in sg.attrs.items():
-                        d[section, key] = val
-                return d
+                    if section == comments_section:
+                        for val in sg.attrs.values():
+                            comments.append(val)
+                    else:
+                        # and read all the attributes in each one
+                        for key, val in sg.attrs.items():
+                            d[section, key] = val
+                return d, comments
             # Otherwise just read the one requested item
             else:
                 section, key = item
@@ -343,9 +391,14 @@ class Provenance:
         ----------
         hdf_file: str or h5py.File.FITS
             The file name or an open file object
+
+        Returns
+        -------
+        None
         """
-        d = self._read_get_hdf(hdf_file)
+        d, com = self._read_get_hdf(hdf_file)
         self.update(d)
+        self.comments.extend(com)
 
     @writer_method
     def write_hdf(self, hdf_file):
@@ -355,6 +408,11 @@ class Provenance:
         ----------
         hdf_file: str or h5py.File
             The file name or an open file object
+
+        Returns
+        -------
+        str
+            The newly-assigned file ID
         """
         with utils.open_hdf(hdf_file, "a") as f:
             #  Group may or may not exist already
@@ -373,6 +431,15 @@ class Provenance:
 
                 # Write values to subgroup attributes
                 subg.attrs[key] = value
+
+            #  Write comments in this section if needed
+            if comments_section not in g.keys():
+                subg = g.create_group(comments_section)
+            else:
+                subg = g[comments_section]
+
+            for i, comment in enumerate(self.comments):
+                subg.attrs[f"comment_{i}"] = comment
 
     # FITS Methods
     # ------------
@@ -409,8 +476,9 @@ class Provenance:
             The file name or an open file object
 
         """
-        d = self._read_get_fits(fits_file)
+        d, com = self._read_get_fits(fits_file)
         self.update(d)
+        self.comments.extend(com)
 
     @writer_method
     def write_fits(self, fits_file):
@@ -420,6 +488,11 @@ class Provenance:
         ----------
         fits_file: str or fitsio.FITS
             The file name or an open file object
+
+        Returns
+        -------
+        str
+            The newly-assigned file ID
         """
         with utils.open_fits(fits_file, "rw") as f:
 
@@ -435,9 +508,9 @@ class Provenance:
             # To maintain case we store items as a trio
             #  of keys specifying category, key, and value
             def write_key(s, k, v, i):
-                ext.write_key(f"sec_{i}", s)
-                ext.write_key(f"key_{i}", k)
-                ext.write_key(f"val_{i}", v)
+                ext.write_key(f"SEC{i}", s)
+                ext.write_key(f"KEY{i}", k)
+                ext.write_key(f"VAL{i}", v)
 
             # Write the keys we have one by one
             for i, ((section, key), value) in enumerate(self.provenance.items()):
@@ -446,11 +519,23 @@ class Provenance:
                 # together again when loading
                 if isinstance(value, str) and "\n" in value:
                     values = value.split("\n")
+                    # There's some kind of bug in CFITSIO that lets you write
+                    #  but not ready certain text that includes new lines when the
+                    # key is longer than 8 characters.  This avoids that because
+                    #  our keys are always shorter than this in this case
+                    if len(values) > 999:
+                        warnings.warn(
+                            f"Cannot write all very long item {section}/{key} to FITS provenance (>999 lines).  Truncating."
+                        )
+                        values = values[:999]
                     for j, v in enumerate(values):
                         write_key(section, key, v, f"{i}_{j}")
                 # or if it's any other item we just put it in directly
                 else:
                     write_key(section, key, value, i)
+
+            for comment in self.comments:
+                ext.write_comment(comment)
 
     # Internal method implementing the read and get methods
     @classmethod
@@ -467,9 +552,25 @@ class Provenance:
             #  item from it, but this shouldn't be a performance bottleneck.
             hdr = ext.read_header()
 
-            # We have recorded items in trios of KEY_0, SEC_0, VAL_0, _1, _2 etc.
+            comments = [
+                k["value"].strip() for k in hdr.records() if k["name"] == "COMMENT"
+            ]
+
+            # Remove sone of the standard FITS comments put in everything
+            #  by CFITSIO.
+            try:
+                comments.remove(
+                    "FITS (Flexible Image Transport System) format is defined in 'Astronomy"
+                )
+                comments.remove(
+                    "and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"
+                )
+            except ValueError:
+                pass
+            # We have recorded items in trios of KEY0, SEC0, VAL0, 1, 2 etc.
             # so count how many keys we have
-            indices = [k[4:] for k in hdr if k.upper().startswith("KEY_")]
+            indices = [k[3:] for k in hdr if k.upper().startswith("KEY")]
+            indices = [k for k in indices if k and k[0] in "0123456789"]
 
             #  We will collect the number of lines for each multi-line
             #  item, so we can patch together later.
@@ -483,9 +584,9 @@ class Provenance:
                     multiline_indices[orig_index] += 1
                 else:
                     #  Handle the normal keys just by reading them
-                    sec = hdr[f"SEC_{index}"]
-                    val = hdr[f"VAL_{index}"]
-                    key = hdr[f"KEY_{index}"]
+                    sec = hdr[f"SEC{index}"]
+                    val = hdr[f"VAL{index}"]
+                    key = hdr[f"KEY{index}"]
                     #  If this is called from get_ then return
                     # if we have found the desired object
                     if item is not None:
@@ -500,12 +601,12 @@ class Provenance:
             for index, n in multiline_indices.items():
                 vals = []
                 # sec and key should be the same for them all
-                sec = hdr[f"SEC_{index}_0"]
-                key = hdr[f"key_{index}_0"]
+                sec = hdr[f"SEC{index}_0"]
+                key = hdr[f"KEY{index}_0"]
 
                 # reassemble into a multi-line text
                 for i in range(n):
-                    vals.append(hdr[f"VAL_{index}_{i}"])
+                    vals.append(hdr[f"VAL{index}_{i}"])
                 val = "\n".join(vals)
 
                 # Check if the target is this multiline item
@@ -518,7 +619,7 @@ class Provenance:
             # If we were not asked for a specific item then return
             # the entire thing
             if item is None:
-                return d
+                return d, comments
             else:
                 # If we were asked for an item then if we've got this far
                 #  then we've failed.
@@ -531,54 +632,102 @@ class Provenance:
 
     @classmethod
     def _read_get_yaml(cls, yml_file, item):
-        import yaml
+        import ruamel.yaml as yaml
+
+        y = yaml.YAML()
 
         with utils.open_file(yml_file, "r") as f:
-            data = yaml.safe_load(f)
+            # Read the whole file
+            data = y.load(f)
             d = data["provenance"]
             if item is not None:
                 sd = d[item[0]]
                 return sd[item[1]]
+
+            # Pull out the different sections
+            # into a dict for provenance and a list
+            # for comments
             out = {}
+            com = []
             for section, sub in d.items():
-                for key, value in sub.items():
-                    out[section, key] = value
-            return out
+                if section == comments_section:
+                    com = sub[:]
+                else:
+                    for key, value in sub.items():
+                        out[section, key] = value
+            return out, com
 
     @classmethod
     def get_yaml(self, yml_file, section, key):
         return self._read_get_yaml(yml_file, (section, key))
 
     def read_yaml(self, yml_file):
-        d = self._read_get_yaml(yml_file, None)
+        """Read provenance from a YAML file.
+
+        Updates the provenance object.
+
+        Parameters
+        ----------
+        yml_file: str or file
+            The file name or an open file object
+
+        Returns
+        -------
+        None
+        """
+        d, com = self._read_get_yaml(yml_file, None)
         self.update(d)
+        self.comments.extend(com)
 
     def _make_yml(self):
+        # internal method to make a dictionary from
+        # this instance suitable to dump to yml
         d = {}
         for (sec, key), val in self.provenance.items():
             if sec not in d:
                 d[sec] = {}
             d[sec][key] = val
+        d["comments"] = self.comments[:]
         return d
 
     @writer_method
     def write_yaml(self, yml_file):
+        """Write provenance to a YAML file.
+
+        Parameters
+        ----------
+        yml_file: str or file
+            The file name or an open file object
+
+        Returns
+        -------
+        str
+            The newly-assigned file ID
+        """
         import ruamel.yaml as yaml
 
+        # Create the YAML loader.  The default instance
+        #  of this preserves comments in the YAML if present,
+        # which means we can run this code on existing
+        # commented yaml without destroying it
         y = yaml.YAML()
         p = self._make_yml()
 
         if isinstance(yml_file, str) or "r" in yml_file.mode:
             with utils.open_file(yml_file, "r+") as f:
+
+                # record curent position (in case this is a pre-opened file)
+                #  and load the yaml from the start
                 s = f.tell()
                 f.seek(0)
-
                 d = y.load(f)
 
+                # if file was empty before:
                 if d is None:
-                    # file was empty before
                     d = {}
                 elif not (isinstance(d, yaml.comments.CommentedMap)):
+                    #  go back to where we started but complain that this is
+                    #  not a dict-type yaml file
                     f.seek(s)
                     raise errors.ProvenanceFileSchemeUnsupported(
                         "Provenance only supports yaml files containing a dictionary as the top level object"
@@ -594,14 +743,3 @@ class Provenance:
         else:
             #  filed opened in write-only mpde
             y.dump(x, f)
-
-    @classmethod
-    def get_sacc(self, sacc_file):
-        raise NotImplementedError("File type note implemented")
-
-    def read_sacc(self, sacc_file):
-        raise NotImplementedError("File type note implemented")
-
-    @writer_method
-    def write_sacc(self, sacc_file):
-        raise NotImplementedError("File type note implemented")

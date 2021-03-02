@@ -4,6 +4,8 @@ from pprint import pprint
 import pytest
 import datetime
 import os
+import random
+import string
 
 
 def test_generate():
@@ -154,6 +156,7 @@ def test_existing_hdf():
     p["sec", "ccc"] = 3.14
     p["sec", "DDD"] = "cat"
     p["sec", "eee"] = 4.14
+    p.add_comment("hopefully nothing else will break if I add this")
 
     with tempfile.TemporaryDirectory() as dirname:
         fname = os.path.join(dirname, "test.hdf")
@@ -198,6 +201,7 @@ def test_yml():
 
         p = Provenance()
         p.generate()
+        p.add_comment("this is a test to check nothing else breaks")
         file_id = p.write(fname)
 
         #  check prov reads
@@ -224,5 +228,45 @@ def test_write_fails():
         p.write("test.xyz")
 
 
+def test_long():
+    p = Provenance()
+    lines = []
+    for i in range(1002):
+        line = "".join(random.choice(string.printable) for i in range(100))
+        lines.append(line)
+    text = "\n".join(lines)
+    p["section", "key"] = text
+
+    with tempfile.TemporaryDirectory() as dirname:
+        fname = os.path.join("./", "test.fits")
+        with pytest.warns(UserWarning):
+            p.write(fname)
+        q = Provenance()
+        q.read(fname)
+
+
+def test_comments():
+    p = Provenance()
+    p.generate()
+    comments = [
+        "Hello,",
+        "My name is Inigo Montoya",
+        "You killed my father",
+        "Prepare to die",
+    ]
+    for comment in comments:
+        p.add_comment(comment)
+
+    with tempfile.TemporaryDirectory() as dirname:
+        for suffix in ["hdf", "fits", "yml"]:
+            fname = os.path.join("./", f"test.{suffix}")
+            p.write(fname)
+            q = Provenance()
+            q.read(fname)
+            for c in comments:
+                assert c in q.comments
+
+
 if __name__ == "__main__":
-    test_yml()
+    # test_comments()
+    test_long()

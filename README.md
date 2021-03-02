@@ -29,8 +29,10 @@ The system will have recorded in that file:
 Recording More Provenance
 -------------------------
 
-We should also record any parameters that we used in this run,
-and the locations and unique IDs of the files that were inputs to this process.
+We should also record:
+- configuration parameters that we used in this run
+- input files we read earlier
+- any comments we have
 
 We can do that by first collecting any config parameters we were passed
 and the paths to all our input files:
@@ -42,12 +44,13 @@ input_files = {"catalog": "./my_input.hdf5"}
 Now we can generaete a provenance object that includes these
 ```
 p = Provenance()
-p.generate(code_config, input_files)
+p.generate(code_config, input_files, comments)
 ```
 
 This will contain, in addition to the provenance above:
 - The specific configuration we passed in
 - The paths and, if they have one, the unique IDs for each of the input files.
+- our comments
 
 File types
 ----------
