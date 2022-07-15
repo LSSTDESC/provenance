@@ -88,7 +88,7 @@ def test_new(file_type, opener):
         assert Provenance.get(fname, "sec", "eee") == 4.14
 
         # the file ID will not be in the original as it changes
-        #  but we saved it
+        # but we saved it
         print(q.provenance)
         assert q["base", "file_id"] == file_id
         del q["base", "file_id"]
@@ -107,7 +107,7 @@ def test_new_fits():
     with tempfile.TemporaryDirectory() as dirname:
         fname = os.path.join(dirname, f"test.{file_type}")
 
-        #  Write to now-closed
+        # Write to now-closed
         file_id = p.write(fname)
 
         assert os.path.exists(fname)
@@ -136,7 +136,7 @@ def test_fits_multiline():
     with tempfile.TemporaryDirectory() as dirname:
         fname = os.path.join(dirname, f"test.{file_type}")
 
-        #  Write to now-closed
+        # Write to now-closed
         p.write(fname)
 
         assert os.path.exists(fname)
@@ -204,7 +204,7 @@ def test_yml():
         p.add_comment("this is a test to check nothing else breaks")
         file_id = p.write(fname)
 
-        #  check prov reads
+        # check prov reads
         q = Provenance()
         q.read(fname)
 

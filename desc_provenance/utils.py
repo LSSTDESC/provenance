@@ -80,7 +80,7 @@ def open_fits(fits_file, mode):
     if isinstance(fits_file, str):
         exists = os.path.exists(fits_file)
 
-        #  By default the "w" mode in FITSIO is r/w.  We have to explicitly remove
+        # By default the "w" mode in FITSIO is r/w.  We have to explicitly remove
         # first if we want to do a proper write and the file already exists.
         if mode == "w":
             mode = "rw"

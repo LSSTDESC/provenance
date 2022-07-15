@@ -34,13 +34,13 @@ def writer_method(method):
     It's not intended for users.
     """
     # This makes the decorator "well-behaved" so that it
-    #  doesn't change the name of the function when printed,
+    # doesn't change the name of the function when printed,
     # etc.
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
-        #  Make a new UUID for this file
+        # Make a new UUID for this file
         file_id = uuid.uuid4().hex
-        #  Record it in the provenance object
+        # Record it in the provenance object
         self[base_section, "file_id"] = file_id
 
         # I was a bit confused at the need to include
@@ -51,7 +51,7 @@ def writer_method(method):
             # At the end, remove it from the Provenance, because it will not
             # be relevant for future files
             del self.provenance[base_section, "file_id"]
-        #  But return it; this is mainly to help testing
+        # But return it; this is mainly to help testing
         return file_id
 
     return wrapped_method
@@ -101,12 +101,12 @@ class Provenance:
         self._add_module_versions()
         self._add_argv_info()
 
-        #  Add user inputs
+        # Add user inputs
         if input_files is not None:
             for name, path in input_files.items():
                 self.add_input_file(name, path)
 
-        #  Add any specific items given by the user
+        # Add any specific items given by the user
         if user_config is not None:
             for key, value in user_config.items():
                 self[config_section, key] = value
@@ -115,7 +115,7 @@ class Provenance:
             for comment in comments:
                 self.add_comment(comment)
 
-    #  Core methods called in generate above
+    # Core methods called in generate above
     # -------------------------------------
     def _add_core_info(self):
         self[base_section, "process_id"] = uuid.uuid4().hex
@@ -128,7 +128,7 @@ class Provenance:
             self[base_section, f"argv_{i}"] = arg
 
     def _add_git_info(self):
-        #  Add some git information
+        # Add some git information
         self[git_section, "diff"] = git.diff()
         self[git_section, "head"] = git.current_revision()
 
@@ -155,7 +155,7 @@ class Provenance:
         # Save it in ourselves
         self[input_path_section, name] = path
         # If the file was saved with its own provenance then it will have its own
-        #  unique file_id.  Try to record that ID.  The file may be some other type,
+        # unique file_id.  Try to record that ID.  The file may be some other type,
         # or not have provenance, so ignore any errors here.
         try:
             self[input_id_section, name] = self.get(path, base_section, "file_id")
@@ -205,7 +205,7 @@ class Provenance:
         for (section, name), value in d.items():
             self.provenance[section, name] = value
 
-    #  Generic I/O Methods
+    # Generic I/O Methods
     # -----------
     def write(self, filename):
         """
@@ -322,7 +322,7 @@ class Provenance:
     def _read_get_hdf(cls, hdf_file, item=None):
         with utils.open_hdf(hdf_file, "r") as f:
             # If the whole provenance section is missing, e.g.
-            #  because the file was not generated with provenance at all,
+            # because the file was not generated with provenance at all,
             # then raise the appropriate error
             if provenance_group not in f.keys():
                 raise errors.ProvenanceMissingSection(
@@ -330,7 +330,7 @@ class Provenance:
                 )
 
             # Othewise get the provenance group.  Provenance is stored in its
-            #  attributes of subgroups
+            # attributes of subgroups
             g = f[provenance_group]
 
             # If we are being called from read_hdf then we want to read everything
@@ -415,7 +415,7 @@ class Provenance:
             The newly-assigned file ID
         """
         with utils.open_hdf(hdf_file, "a") as f:
-            #  Group may or may not exist already
+            # Group may or may not exist already
             if provenance_group in f.keys():
                 g = f[provenance_group]
             else:
@@ -432,7 +432,7 @@ class Provenance:
                 # Write values to subgroup attributes
                 subg.attrs[key] = value
 
-            #  Write comments in this section if needed
+            # Write comments in this section if needed
             if comments_section not in g.keys():
                 subg = g.create_group(comments_section)
             else:
@@ -496,7 +496,7 @@ class Provenance:
         """
         with utils.open_fits(fits_file, "rw") as f:
 
-            #  Create the group if it doesn't exist
+            # Create the group if it doesn't exist
             if provenance_group in f:
                 ext = f[provenance_group]
             else:
@@ -504,9 +504,9 @@ class Provenance:
                 f.update_hdu_list()
                 ext = f[provenance_group]
 
-            #  Helper local function to write a key.
+            # Helper local function to write a key.
             # To maintain case we store items as a trio
-            #  of keys specifying category, key, and value
+            # of keys specifying category, key, and value
             def write_key(s, k, v, i):
                 ext.write_key(f"SEC{i}", s)
                 ext.write_key(f"KEY{i}", k)
@@ -515,14 +515,14 @@ class Provenance:
             # Write the keys we have one by one
             for i, ((section, key), value) in enumerate(self.provenance.items()):
                 # FITS header items can't contain newlines, so we break up
-                #  any text with newlines into separate entries which we patch
+                # any text with newlines into separate entries which we patch
                 # together again when loading
                 if isinstance(value, str) and "\n" in value:
                     values = value.split("\n")
                     # There's some kind of bug in CFITSIO that lets you write
-                    #  but not ready certain text that includes new lines when the
+                    # but not ready certain text that includes new lines when the
                     # key is longer than 8 characters.  This avoids that because
-                    #  our keys are always shorter than this in this case
+                    # our keys are always shorter than this in this case
                     if len(values) > 999:
                         warnings.warn(
                             f"Cannot write all very long item {section}/{key} to FITS provenance (>999 lines).  Truncating."
@@ -548,8 +548,8 @@ class Provenance:
             if item is not None:
                 target_sec, target_key = item
 
-            #  Read the entire header. A bit wasteful if we only want a single
-            #  item from it, but this shouldn't be a performance bottleneck.
+            # Read the entire header. A bit wasteful if we only want a single
+            # item from it, but this shouldn't be a performance bottleneck.
             hdr = ext.read_header()
 
             comments = [
@@ -557,7 +557,7 @@ class Provenance:
             ]
 
             # Remove sone of the standard FITS comments put in everything
-            #  by CFITSIO.
+            # by CFITSIO.
             try:
                 comments.remove(
                     "FITS (Flexible Image Transport System) format is defined in 'Astronomy"
@@ -572,8 +572,8 @@ class Provenance:
             indices = [k[3:] for k in hdr if k.upper().startswith("KEY")]
             indices = [k for k in indices if k and k[0] in "0123456789"]
 
-            #  We will collect the number of lines for each multi-line
-            #  item, so we can patch together later.
+            # We will collect the number of lines for each multi-line
+            # item, so we can patch together later.
             multiline_indices = collections.defaultdict(int)
             d = {}
 
@@ -583,21 +583,21 @@ class Provenance:
                     orig_index, _ = index.split("_", 1)
                     multiline_indices[orig_index] += 1
                 else:
-                    #  Handle the normal keys just by reading them
+                    # Handle the normal keys just by reading them
                     sec = hdr[f"SEC{index}"]
                     val = hdr[f"VAL{index}"]
                     key = hdr[f"KEY{index}"]
-                    #  If this is called from get_ then return
+                    # If this is called from get_ then return
                     # if we have found the desired object
                     if item is not None:
                         if (sec == target_sec) and (key == target_key):
                             return val
-                    #  Otherwise just build up all the items
+                    # Otherwise just build up all the items
                     else:
                         d[sec, key] = val
 
-            #  Now deal with all the multiline ones we found.
-            #  we recorded the number of entries for each of them
+            # Now deal with all the multiline ones we found.
+            # we recorded the number of entries for each of them
             for index, n in multiline_indices.items():
                 vals = []
                 # sec and key should be the same for them all
@@ -622,7 +622,7 @@ class Provenance:
                 return d, comments
             else:
                 # If we were asked for an item then if we've got this far
-                #  then we've failed.
+                # then we've failed.
                 raise errors.ProvenanceMissingItem(
                     f"Missing item {target_sec} {target_key}"
                 )
@@ -707,7 +707,7 @@ class Provenance:
         import ruamel.yaml as yaml
 
         # Create the YAML loader.  The default instance
-        #  of this preserves comments in the YAML if present,
+        # of this preserves comments in the YAML if present,
         # which means we can run this code on existing
         # commented yaml without destroying it
         y = yaml.YAML()
@@ -717,7 +717,7 @@ class Provenance:
             with utils.open_file(yml_file, "r+") as f:
 
                 # record curent position (in case this is a pre-opened file)
-                #  and load the yaml from the start
+                # and load the yaml from the start
                 s = f.tell()
                 f.seek(0)
                 d = y.load(f)
@@ -726,20 +726,20 @@ class Provenance:
                 if d is None:
                     d = {}
                 elif not (isinstance(d, yaml.comments.CommentedMap)):
-                    #  go back to where we started but complain that this is
-                    #  not a dict-type yaml file
+                    # go back to where we started but complain that this is
+                    # not a dict-type yaml file
                     f.seek(s)
                     raise errors.ProvenanceFileSchemeUnsupported(
                         "Provenance only supports yaml files containing a dictionary as the top level object"
                     )
 
-                #  replace existing prov completely if present.  We re-write
+                # replace existing prov completely if present.  We re-write
                 # the whole file.  Could avoid but not really needed
-                #  as ruamel should maintain comments.
+                # as ruamel should maintain comments.
                 d["provenance"] = p
                 f.seek(0)
                 y.dump(d, f)
                 f.truncate()
         else:
-            #  filed opened in write-only mpde
+            # filed opened in write-only mpde
             y.dump(x, f)
