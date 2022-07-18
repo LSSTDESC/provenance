@@ -42,7 +42,7 @@ def writer_method(method):
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
         # Record it in the provenance object
-        self.generate_file_id()
+        file_id = self.generate_file_id()
 
         # I was a bit confused at the need to include
         # self here, but it seems to be required
