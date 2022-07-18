@@ -1,4 +1,4 @@
 from .provenance import Provenance
-from . import errors
+from .errors import *
 
 __version__ = "0.0.1"

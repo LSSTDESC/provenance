@@ -6,6 +6,9 @@ import pathlib
 import contextlib
 import shutil
 
+def is_path(p):
+    return isinstance(p, str) or isinstance(p, pathlib.Path)
+
 
 def get_caller_directory(parent_frames=0):
     """
@@ -62,7 +65,7 @@ def open_hdf(hdf_file, mode):
     """Open an HDF file, or if a file is provided, simply return it"""
     import h5py
 
-    if isinstance(hdf_file, str):
+    if is_path(hdf_file):
         f = h5py.File(hdf_file, mode)
         try:
             yield f
@@ -77,7 +80,7 @@ def open_fits(fits_file, mode):
     """Open a FITS file, or if a file is already provided simply return it"""
     import fitsio
 
-    if isinstance(fits_file, str):
+    if is_path(fits_file):
         exists = os.path.exists(fits_file)
 
         # By default the "w" mode in FITSIO is r/w.  We have to explicitly remove
@@ -100,7 +103,7 @@ def open_fits(fits_file, mode):
 def open_file(file, mode):
     """Open a regular file, or if a file is already provided simply return it"""
 
-    if isinstance(file, str):
+    if is_path(file):
         if mode == "r+" and not os.path.exists(file):
             f = open(file, "w+")
         else:

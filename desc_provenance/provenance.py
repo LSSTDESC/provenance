@@ -11,6 +11,9 @@ import datetime
 import functools
 import contextlib
 import collections
+import numpy as np
+import pickle
+import copy
 
 # Some useful constants
 unknown_value = "UNKNOWN"
@@ -38,10 +41,8 @@ def writer_method(method):
     # etc.
     @functools.wraps(method)
     def wrapped_method(self, *args, **kwargs):
-        # Make a new UUID for this file
-        file_id = uuid.uuid4().hex
         # Record it in the provenance object
-        self[base_section, "file_id"] = file_id
+        self.generate_file_id()
 
         # I was a bit confused at the need to include
         # self here, but it seems to be required
@@ -55,6 +56,11 @@ def writer_method(method):
         return file_id
 
     return wrapped_method
+
+def writable_value(x):
+    if isinstance(x, (int, np.integer)) or isinstance(x, (float, np.floating)):
+        return x
+    return str(x)
 
 
 class Provenance:
@@ -70,9 +76,17 @@ class Provenance:
         self.provenance = {}
         self.comments = []
 
+    def copy(self):
+        cls = self.__class__
+        cp = cls(code_dir=self.code_dir)
+        cp.provenance = copy.deepcopy(self.provenance)
+        cp.comments = copy.deepcopy(self.comments)
+        return cp
+
+
     # Generation methods
     # ------------------
-    def generate(self, user_config=None, input_files=None, comments=None):
+    def generate(self, user_config=None, input_files=None, comments=None, directory=None):
         """
         Generate a new set of provenance.
 
@@ -94,10 +108,12 @@ class Provenance:
             Optional name_for_file: file_path dict
         comments: list or None
             Optional comments to include.  Not intended to be machine-readable
+        directory: str or None
+            Optional directory in which to run git information
         """
         # Record various core pieces of information
         self._add_core_info()
-        self._add_git_info()
+        self._add_git_info(directory)
         self._add_module_versions()
         self._add_argv_info()
 
@@ -109,7 +125,7 @@ class Provenance:
         # Add any specific items given by the user
         if user_config is not None:
             for key, value in user_config.items():
-                self[config_section, key] = value
+                self[config_section, key] = writable_value(value)
 
         if comments is not None:
             for comment in comments:
@@ -127,9 +143,9 @@ class Provenance:
         for i, arg in enumerate(sys.argv):
             self[base_section, f"argv_{i}"] = arg
 
-    def _add_git_info(self):
+    def _add_git_info(self, directory):
         # Add some git information
-        self[git_section, "diff"] = git.diff()
+        self[git_section, "diff"] = git.diff(directory)
         self[git_section, "head"] = git.current_revision()
 
     def _add_module_versions(self):
@@ -159,7 +175,7 @@ class Provenance:
         # or not have provenance, so ignore any errors here.
         try:
             self[input_id_section, name] = self.get(path, base_section, "file_id")
-        except errors.ProvenanceError:
+        except:
             self[input_id_section, name] = unknown_value
 
     def add_comment(self, comment):
@@ -207,7 +223,7 @@ class Provenance:
 
     # Generic I/O Methods
     # -----------
-    def write(self, filename):
+    def write(self, f, suffix=None):
         """
         Write provenance to a named file, guessing the file type from its suffix.
 
@@ -216,15 +232,31 @@ class Provenance:
 
         Parameters
         ----------
-        filename: str
+        f: str or writeable object
+        suffix: str
+            Must be supplied if f is a file-like object
 
         Returns
         -------
         str
             The newly-assigned file ID
         """
-        p = pathlib.Path(filename)
 
+        # String or path
+        if utils.is_path(f):
+            f = pathlib.Path(f)
+            suffix = f.suffix
+        elif suffix is None:
+            raise ValueError("Must supply suffix if open file is supplied")
+
+
+        # If passed a directory, make a provenance file in that directory
+        if suffix == "" and isinstance(f, pathlib.Path) and f.is_dir():
+            return self.write_yaml(f + "provenance.yaml")
+
+        if suffix and not suffix.startswith('.'):
+            suffix = '.' + suffix
+            
         writers = {
             ".hdf": self.write_hdf,
             ".hdf5": self.write_hdf,
@@ -232,14 +264,15 @@ class Provenance:
             ".fit": self.write_fits,
             ".yml": self.write_yaml,
             ".yaml": self.write_yaml,
+            ".pkl": self.write_pickle,
+            ".pickle": self.write_pickle,
         }
-
-        method = writers.get(p.suffix)
+        method = writers.get(suffix)
 
         if method is None:
-            raise errors.ProvenanceFileTypeUnknown(filename)
+            return self.write_yaml(f + ".provenance.yaml")
 
-        return method(filename)
+        return method(f)
 
     def read(self, filename):
         """
@@ -266,6 +299,8 @@ class Provenance:
             ".fit": self.read_fits,
             ".yml": self.read_yaml,
             ".yaml": self.read_yaml,
+            ".pkl": self.read_yaml,
+            ".pickle": self.read_pickle,
         }
 
         method = readers.get(p.suffix)
@@ -308,6 +343,8 @@ class Provenance:
             ".fit": cls.get_fits,
             ".yml": cls.get_yaml,
             ".yaml": cls.get_yaml,
+            ".pkl": cls.get_pickle,
+            ".pickle": cls.get_pickle,
         }
 
         method = getters.get(p.suffix)
@@ -520,7 +557,7 @@ class Provenance:
                 if isinstance(value, str) and "\n" in value:
                     values = value.split("\n")
                     # There's some kind of bug in CFITSIO that lets you write
-                    # but not ready certain text that includes new lines when the
+                    # but not read certain text that includes new lines when the
                     # key is longer than 8 characters.  This avoids that because
                     # our keys are always shorter than this in this case
                     if len(values) > 999:
@@ -713,7 +750,7 @@ class Provenance:
         y = yaml.YAML()
         p = self._make_yml()
 
-        if isinstance(yml_file, str) or "r" in yml_file.mode:
+        if utils.is_path(yml_file) or "r" in yml_file.mode:
             with utils.open_file(yml_file, "r+") as f:
 
                 # record curent position (in case this is a pre-opened file)
@@ -734,7 +771,7 @@ class Provenance:
                     )
 
                 # replace existing prov completely if present.  We re-write
-                # the whole file.  Could avoid but not really needed
+                # the whole file contents after the prov.  Could avoid but not really needed
                 # as ruamel should maintain comments.
                 d["provenance"] = p
                 f.seek(0)
@@ -743,3 +780,86 @@ class Provenance:
         else:
             # filed opened in write-only mpde
             y.dump(x, f)
+
+    @writer_method
+    def write_pickle(self, pickle_file):
+        """Write provenance to a Pickle file.
+
+        Parameters
+        ----------
+        pickle_file: str or file
+            The file name or an open file object
+
+        Returns
+        -------
+        str
+            The newly-assigned file ID
+        """
+
+        if utils.is_path(pickle_file) or "r" in pickle_file.mode:
+            with utils.open_file(pickle_file, "r+") as f:
+                # jump to the end of the file
+                f.seek(0, 2)
+                # save the pickle info
+                pickle.dump(["provenance_dump", self.provenance, self.comments], f)
+
+        else:
+            # filed opened in write-only mode already
+            pickle.dump(["provenance_dump", self.provenance, self.comments], pickle_file)
+                    
+    @classmethod
+    def _read_get_pickle(cls, pickle_file):
+        f = utils.open_file(pickle_file, "r")
+        s = f.tell()
+
+        try:
+            n = 0
+            while True:
+                try:
+                    item = pickle.load(f)
+                except:
+                    break
+            if n == 0:
+                raise ProvenanceError(f"Nothing readable found in file {pickle_file}")
+            if (not isinstance(item, list)) or (len(item)!=3) or (item[0]!="provenance_dump"):
+                raise ProvenanceError(f"No provenance found in file {pickle_file}")
+                _, d, c = item
+        finally:
+            if utils.is_path(pickle_file):
+                f.close()
+            else:
+                f.seek(s)
+
+    def read_pickle(self, pickle_file):
+        """Read provenance from a YAML file.
+
+        Updates the provenance object.
+
+        Parameters
+        ----------
+        pickle_file: str or file
+            The file name or an open file object
+
+        Returns
+        -------
+        None
+        """
+        d, com = self._read_get_pickle(pickle_file)
+        self.update(d)
+        self.comments.extend(com)
+
+    @classmethod
+    def get_pickle(self, pickle_file, section, key):
+        d, com = self._read_get_pickle(pickle_file)
+        return d[section, key]
+
+
+    def to_string_dict(self):
+        d = {f"{s}/{k}": str(v) for (s, k), v in self.provenance.items()}
+        for i,c in self.comments:
+            d[f'comment_{i}'] = c
+        return d
+
+    def generate_file_id(self):
+        self[base_section, "file_id"] = uuid.uuid4().hex
+
