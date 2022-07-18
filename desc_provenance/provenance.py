@@ -57,6 +57,7 @@ def writer_method(method):
 
     return wrapped_method
 
+
 def writable_value(x):
     if isinstance(x, (int, np.integer)) or isinstance(x, (float, np.floating)):
         return x
@@ -83,10 +84,11 @@ class Provenance:
         cp.comments = copy.deepcopy(self.comments)
         return cp
 
-
     # Generation methods
     # ------------------
-    def generate(self, user_config=None, input_files=None, comments=None, directory=None):
+    def generate(
+        self, user_config=None, input_files=None, comments=None, directory=None
+    ):
         """
         Generate a new set of provenance.
 
@@ -249,14 +251,13 @@ class Provenance:
         elif suffix is None:
             raise ValueError("Must supply suffix if open file is supplied")
 
-
         # If passed a directory, make a provenance file in that directory
         if suffix == "" and isinstance(f, pathlib.Path) and f.is_dir():
             return self.write_yaml(f + "provenance.yaml")
 
-        if suffix and not suffix.startswith('.'):
-            suffix = '.' + suffix
-            
+        if suffix and not suffix.startswith("."):
+            suffix = "." + suffix
+
         writers = {
             ".hdf": self.write_hdf,
             ".hdf5": self.write_hdf,
@@ -805,8 +806,10 @@ class Provenance:
 
         else:
             # filed opened in write-only mode already
-            pickle.dump(["provenance_dump", self.provenance, self.comments], pickle_file)
-                    
+            pickle.dump(
+                ["provenance_dump", self.provenance, self.comments], pickle_file
+            )
+
     @classmethod
     def _read_get_pickle(cls, pickle_file):
         f = utils.open_file(pickle_file, "r")
@@ -821,7 +824,11 @@ class Provenance:
                     break
             if n == 0:
                 raise ProvenanceError(f"Nothing readable found in file {pickle_file}")
-            if (not isinstance(item, list)) or (len(item)!=3) or (item[0]!="provenance_dump"):
+            if (
+                (not isinstance(item, list))
+                or (len(item) != 3)
+                or (item[0] != "provenance_dump")
+            ):
                 raise ProvenanceError(f"No provenance found in file {pickle_file}")
                 _, d, c = item
         finally:
@@ -853,13 +860,11 @@ class Provenance:
         d, com = self._read_get_pickle(pickle_file)
         return d[section, key]
 
-
     def to_string_dict(self):
         d = {f"{s}/{k}": str(v) for (s, k), v in self.provenance.items()}
-        for i,c in self.comments:
-            d[f'comment_{i}'] = c
+        for i, c in self.comments:
+            d[f"comment_{i}"] = c
         return d
 
     def generate_file_id(self):
         self[base_section, "file_id"] = uuid.uuid4().hex
-

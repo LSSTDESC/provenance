@@ -6,6 +6,7 @@ import pathlib
 import contextlib
 import shutil
 
+
 def is_path(p):
     return isinstance(p, str) or isinstance(p, pathlib.Path)
 
